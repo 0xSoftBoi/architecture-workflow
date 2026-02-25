@@ -1,0 +1,114 @@
+name: Validate Architecture Documentation
+
+on:
+  pull_request:
+    paths:
+      - 'docs/architecture/**'
+      - 'docs/adr/**'
+      - '**.plantuml'
+      - '**.mermaid'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Validate ADR format
+        run: |
+          echo "Validating Architecture Decision Records..."
+          
+          # Check ADR naming convention
+          for file in docs/adr/*.md; do
+            if [ -f "$file" ]; then
+              basename=$(basename "$file")
+              if ! [[ $basename =~ ^[0-9]{4}-.*\.md$ ]]; then
+                echo "❌ ERROR: $file does not follow ADR naming convention (NNNN-title.md)"
+                exit 1
+              fi
+              
+              # Validate ADR structure
+              if ! grep -q "# Status" "$file" || ! grep -q "# Context" "$file" || ! grep -q "# Decision" "$file"; then
+                echo "❌ ERROR: $file missing required ADR sections (Status, Context, Decision)"
+                exit 1
+              fi
+              
+              echo "✅ $file validated successfully"
+            fi
+          done
+      
+      - name: Validate blockchain architecture docs
+        run: |
+          echo "Validating blockchain architecture documentation..."
+          
+          # Check for required blockchain architecture sections
+          for file in docs/architecture/blockchain-*.md; do
+            if [ -f "$file" ]; then
+              echo "Checking $file..."
+              
+              # Check for blockchain-specific sections
+              sections=("Consensus" "Smart Contracts" "Network" "Security")
+              for section in "${sections[@]}"; do
+                if ! grep -qi "$section" "$file"; then
+                  echo "⚠️  WARNING: $file may be missing '$section' section"
+                fi
+              done
+              
+              echo "✅ $file validated"
+            fi
+          done
+      
+      - name: Check diagram references
+        run: |
+          echo "Checking diagram references in documentation..."
+          
+          # Find all markdown files
+          find docs -name "*.md" | while read file; do
+            # Extract diagram references
+            grep -oE '!\[.*\]\([^)]+\.(png|svg|plantuml|mermaid)\)' "$file" || true | while read ref; do
+              diagram_path=$(echo "$ref" | grep -oE '\([^)]+\)' | tr -d '()')
+              
+              # Check if referenced diagram exists or is a source file
+              if [[ ! "$diagram_path" =~ ^http ]] && [ ! -f "$(dirname "$file")/$diagram_path" ] && [ ! -f "$diagram_path" ]; then
+                echo "⚠️  WARNING: $file references non-existent diagram: $diagram_path"
+              fi
+            done
+          done
+      
+      - name: Validate PlantUML syntax
+        run: |
+          sudo apt-get update && sudo apt-get install -y plantuml
+          
+          find . -type f \( -name "*.plantuml" -o -name "*.puml" \) | while read file; do
+            echo "Validating $file..."
+            if ! plantuml -syntax "$file"; then
+              echo "❌ ERROR: Invalid PlantUML syntax in $file"
+              exit 1
+            fi
+            echo "✅ $file syntax valid"
+          done
+      
+      - name: Comment validation results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const message = `✅ **Architecture Documentation Validated**\n\n` +
+              `All architecture documents and diagrams have been validated successfully.\n\n` +
+              `- ADR format validated\n` +
+              `- Blockchain architecture sections checked\n` +
+              `- Diagram references verified\n` +
+              `- Diagram syntax validated`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });

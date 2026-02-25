@@ -1,0 +1,101 @@
+name: Generate Technical Diagrams
+
+on:
+  push:
+    paths:
+      - '**.plantuml'
+      - '**.puml'
+      - '**.mermaid'
+      - 'diagrams/**'
+  pull_request:
+    paths:
+      - '**.plantuml'
+      - '**.puml'
+      - '**.mermaid'
+      - 'diagrams/**'
+  workflow_dispatch:
+
+jobs:
+  generate-diagrams:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install diagram tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz plantuml
+          npm install -g @mermaid-js/mermaid-cli
+      
+      - name: Generate PlantUML diagrams
+        run: |
+          mkdir -p docs/diagrams/generated
+          
+          # Find and convert all PlantUML files
+          find . -type f \( -name "*.plantuml" -o -name "*.puml" \) | while read file; do
+            filename=$(basename "$file" | sed 's/\.[^.]*$//')
+            echo "Generating diagram for $file"
+            plantuml -tpng "$file" -o "$(pwd)/docs/diagrams/generated"
+            plantuml -tsvg "$file" -o "$(pwd)/docs/diagrams/generated"
+          done
+      
+      - name: Generate Mermaid diagrams
+        run: |
+          mkdir -p docs/diagrams/generated
+          
+          # Find and convert all Mermaid files
+          find . -type f -name "*.mermaid" | while read file; do
+            filename=$(basename "$file" .mermaid)
+            echo "Generating diagram for $file"
+            mmdc -i "$file" -o "docs/diagrams/generated/${filename}.png"
+            mmdc -i "$file" -o "docs/diagrams/generated/${filename}.svg"
+          done
+      
+      - name: Create diagram index
+        run: |
+          cat > docs/diagrams/INDEX.md << 'EOF'
+          # Architecture Diagrams
+          
+          Auto-generated on: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ## Available Diagrams
+          
+          EOF
+          
+          # List all generated diagrams
+          for file in docs/diagrams/generated/*.svg; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file" .svg)
+              echo "### $filename" >> docs/diagrams/INDEX.md
+              echo "![${filename}](generated/${filename}.svg)" >> docs/diagrams/INDEX.md
+              echo "- [PNG](generated/${filename}.png) | [SVG](generated/${filename}.svg)" >> docs/diagrams/INDEX.md
+              echo "" >> docs/diagrams/INDEX.md
+            fi
+          done
+      
+      - name: Commit generated diagrams
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add docs/diagrams/
+          git diff --staged --quiet || git commit -m "docs: Auto-generate architecture diagrams [skip ci]"
+          git push
+      
+      - name: Upload diagram artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: architecture-diagrams
+          path: docs/diagrams/generated/
+          retention-days: 90

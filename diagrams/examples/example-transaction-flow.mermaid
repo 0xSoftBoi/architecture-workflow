@@ -1,0 +1,42 @@
+graph TB
+    Start([User Initiates Transaction]) --> Wallet[Wallet Creates Transaction]
+    Wallet --> Sign{Sign Transaction?}
+    
+    Sign -->|User Approves| SignTx[Sign with Private Key]
+    Sign -->|User Rejects| Cancel[Transaction Cancelled]
+    
+    SignTx --> Submit[Submit to Network]
+    Submit --> Validate[Node Validates Transaction]
+    
+    Validate --> Valid{Valid?}
+    Valid -->|Yes| Mempool[Add to Mempool]
+    Valid -->|No| Reject[Reject Transaction]
+    
+    Mempool --> Select[Validator Selects Transactions]
+    Select --> CreateBlock[Create Block Proposal]
+    CreateBlock --> Consensus{Consensus Reached?}
+    
+    Consensus -->|Yes| Commit[Commit Block]
+    Consensus -->|No| Wait[Wait for Next Round]
+    Wait --> Select
+    
+    Commit --> UpdateState[Update Chain State]
+    UpdateState --> Broadcast[Broadcast to Network]
+    Broadcast --> Confirm[Transaction Confirmed]
+    
+    Confirm --> UpdateUI[Update User Interface]
+    UpdateUI --> End([Transaction Complete])
+    
+    Reject --> Error[Display Error]
+    Cancel --> Error
+    Error --> End
+    
+    style Start fill:#238636,stroke:#333,stroke-width:2px,color:#fff
+    style End fill:#238636,stroke:#333,stroke-width:2px,color:#fff
+    style Sign fill:#1f6feb,stroke:#333,stroke-width:2px,color:#fff
+    style Valid fill:#1f6feb,stroke:#333,stroke-width:2px,color:#fff
+    style Consensus fill:#986ee2,stroke:#333,stroke-width:2px,color:#fff
+    style Commit fill:#238636,stroke:#333,stroke-width:2px,color:#fff
+    style Reject fill:#da3633,stroke:#333,stroke-width:2px,color:#fff
+    style Cancel fill:#da3633,stroke:#333,stroke-width:2px,color:#fff
+    style Error fill:#da3633,stroke:#333,stroke-width:2px,color:#fff

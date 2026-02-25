@@ -1,0 +1,103 @@
+name: Link Commits to Architecture Documentation
+
+on:
+  push:
+    branches:
+      - main
+      - architecture-docs
+      - diagram-updates
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  link-commits:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Extract commit information
+        id: commit-info
+        run: |
+          echo "sha=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+          echo "message=$(git log -1 --pretty=%B)" >> $GITHUB_OUTPUT
+          echo "author=$(git log -1 --pretty=%an)" >> $GITHUB_OUTPUT
+          echo "date=$(git log -1 --pretty=%ci)" >> $GITHUB_OUTPUT
+          
+          # Extract architecture references from commit message
+          ARCH_REFS=$(git log -1 --pretty=%B | grep -oE '(ADR|ARCH|DOC)-[0-9]+' || echo "")
+          echo "arch_refs=${ARCH_REFS}" >> $GITHUB_OUTPUT
+      
+      - name: Parse changed files
+        id: changed-files
+        run: |
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }})
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          
+          # Check for architecture-related changes
+          ARCH_CHANGES=$(echo "$CHANGED_FILES" | grep -E '(docs/architecture|docs/adr|diagrams|.plantuml|.mermaid)' || echo "")
+          echo "arch_changes=${ARCH_CHANGES}" >> $GITHUB_OUTPUT
+      
+      - name: Update documentation index
+        if: steps.changed-files.outputs.arch_changes != ''
+        run: |
+          mkdir -p docs/architecture/commit-log
+          
+          # Create commit log entry
+          cat > docs/architecture/commit-log/${{ github.sha }}.md << 'EOF'
+          # Commit: ${{ steps.commit-info.outputs.message }}
+          
+          **SHA**: ${{ steps.commit-info.outputs.sha }}
+          **Author**: ${{ steps.commit-info.outputs.author }}
+          **Date**: ${{ steps.commit-info.outputs.date }}
+          **Architecture References**: ${{ steps.commit-info.outputs.arch_refs }}
+          
+          ## Changed Files
+          ${{ steps.changed-files.outputs.arch_changes }}
+          
+          ## Related Documentation
+          - [View Commit](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+          - [Architecture Index](../../ARCHITECTURE.md)
+          EOF
+          
+          # Update main architecture index
+          if [ -f docs/ARCHITECTURE.md ]; then
+            echo "" >> docs/ARCHITECTURE.md
+            echo "- [${{ steps.commit-info.outputs.message }}](architecture/commit-log/${{ github.sha }}.md) - ${{ steps.commit-info.outputs.date }}" >> docs/ARCHITECTURE.md
+          fi
+      
+      - name: Commit changes
+        if: steps.changed-files.outputs.arch_changes != ''
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add docs/
+          git diff --staged --quiet || git commit -m "docs: Update architecture documentation index [skip ci]"
+          git push
+      
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && steps.changed-files.outputs.arch_changes != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const message = `🏗️ **Architecture Changes Detected**\n\n` +
+              `This PR includes changes to architecture documentation or diagrams.\n\n` +
+              `**Commit**: ${context.sha}\n` +
+              `**Architecture References**: ${{ steps.commit-info.outputs.arch_refs }}\n\n` +
+              `**Changed Files**:\n\`\`\`\n${{ steps.changed-files.outputs.arch_changes }}\n\`\`\`\n\n` +
+              `Documentation index has been automatically updated.`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });

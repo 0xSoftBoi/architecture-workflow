@@ -1,0 +1,76 @@
+@startuml
+!theme blueprint
+
+title Example: Blockchain Network Topology
+
+skinparam backgroundColor #0d1117
+skinparam defaultTextAlignment center
+
+package "Validator Layer" #2d333b {
+    node "Validator 1" as V1 #238636
+    node "Validator 2" as V2 #238636
+    node "Validator 3" as V3 #238636
+    node "Validator 4" as V4 #238636
+}
+
+package "Full Node Layer" #2d333b {
+    node "Full Node 1" as F1 #1f6feb
+    node "Full Node 2" as F2 #1f6feb
+    node "Full Node 3" as F3 #1f6feb
+}
+
+package "Light Client Layer" #2d333b {
+    node "Light Client 1" as L1 #986ee2
+    node "Light Client 2" as L2 #986ee2
+    node "Light Client 3" as L3 #986ee2
+}
+
+package "External Services" #2d333b {
+    node "RPC API" as RPC #da3633
+    node "WebSocket" as WS #da3633
+    database "Block Explorer" as BE #6e7681
+}
+
+' Validator connections (full mesh)
+V1 <--> V2 : P2P
+V1 <--> V3 : P2P
+V1 <--> V4 : P2P
+V2 <--> V3 : P2P
+V2 <--> V4 : P2P
+V3 <--> V4 : P2P
+
+' Full node connections
+V1 --> F1 : Blocks
+V2 --> F2 : Blocks
+V3 --> F3 : Blocks
+
+' Light client connections
+F1 --> L1 : Headers
+F2 --> L2 : Headers
+F3 --> L3 : Headers
+
+' API connections
+F1 --> RPC : JSON-RPC
+F1 --> WS : Events
+F2 --> RPC : JSON-RPC
+F2 --> BE : Data Feed
+
+note right of V1
+  Validators run full nodes
+  and participate in consensus.
+  They validate and produce blocks.
+end note
+
+note right of F1
+  Full nodes sync entire
+  blockchain and serve
+  data to light clients.
+end note
+
+note right of L1
+  Light clients sync only
+  block headers for efficient
+  verification.
+end note
+
+@enduml
